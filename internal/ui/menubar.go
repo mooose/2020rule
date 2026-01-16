@@ -46,9 +46,10 @@ func (m *MenuBar) Start() {
 	menuet.App().Label = "com.2020rule.app"
 	menuet.App().Children = m.menuItems
 
-	// Set initial title
+	// Set initial state with icon
 	menuet.App().SetMenuState(&menuet.MenuState{
 		Title: m.getStatusTitle(),
+		Image: "icon.png",
 	})
 
 	// Update every second - start after a brief delay to ensure app is initialized
@@ -60,6 +61,7 @@ func (m *MenuBar) Start() {
 		for range ticker.C {
 			menuet.App().SetMenuState(&menuet.MenuState{
 				Title: m.getStatusTitle(),
+				Image: "icon.png",
 			})
 		}
 	}()

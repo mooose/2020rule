@@ -33,6 +33,11 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 # Copy binary
 cp "${BUILD_DIR}/${APP_NAME}" "${APP_DIR}/Contents/MacOS/"
 
+# Copy resources (icons)
+if [ -d "resources/icon.iconset" ]; then
+    cp resources/icon.iconset/*.png "${APP_DIR}/Contents/Resources/" 2>/dev/null || true
+fi
+
 # Create Info.plist
 cat > "${APP_DIR}/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>

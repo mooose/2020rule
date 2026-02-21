@@ -44,6 +44,7 @@ type Manager struct {
 	config         *config.Config
 	statsStore     *stats.Store
 	currentTimer   *time.Timer
+	breakTimer     *time.Timer
 	workStartTime  time.Time
 	breakStartTime time.Time
 	currentBreakID int64
@@ -155,6 +156,8 @@ func (m *Manager) CompleteBreak() {
 		return
 	}
 
+	m.stopBreakTimerLocked()
+
 	// Record break completion
 	if m.statsStore != nil && m.currentBreakID > 0 {
 		duration := time.Since(m.breakStartTime)
@@ -183,6 +186,8 @@ func (m *Manager) SkipBreak() {
 	if m.state != StateBreakRequired {
 		return
 	}
+
+	m.stopBreakTimerLocked()
 
 	// Record break as skipped
 	if m.statsStore != nil && m.currentBreakID > 0 {
@@ -278,6 +283,7 @@ func (m *Manager) Stop() {
 	defer m.mu.Unlock()
 
 	m.stopCurrentTimer()
+	m.stopBreakTimerLocked()
 	m.state = StatePausedManual
 	m.elapsed = 0
 	m.notifyStateChange()
@@ -316,9 +322,29 @@ func (m *Manager) triggerBreak() {
 	m.state = StateBreakRequired
 	m.breakStartTime = time.Now()
 
-	// Note: Break completion is handled by the overlay's onComplete callback
-	// which calls CompleteBreak(). We don't schedule a timer here to avoid
-	// race conditions between the overlay countdown and a separate timer.
+	// Fallback: auto-complete the break if the overlay callback never fires.
+	m.stopBreakTimerLocked()
+	m.breakTimer = time.AfterFunc(m.config.BreakDuration, func() {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.state != StateBreakRequired {
+			return
+		}
+		// Treat as a normal completion to keep the schedule moving.
+		if m.statsStore != nil && m.currentBreakID > 0 {
+			duration := time.Since(m.breakStartTime)
+			m.statsStore.RecordBreakComplete(m.currentBreakID, duration)
+		}
+		m.state = StateRunning
+		m.workStartTime = time.Now()
+		m.elapsed = 0
+		m.currentBreakID = 0
+		m.scheduleWorkTimer()
+		m.notifyStateChange()
+		if m.onBreakComplete != nil {
+			m.onBreakComplete()
+		}
+	})
 
 	m.notifyStateChange()
 
@@ -332,6 +358,13 @@ func (m *Manager) stopCurrentTimer() {
 	if m.currentTimer != nil {
 		m.currentTimer.Stop()
 		m.currentTimer = nil
+	}
+}
+
+func (m *Manager) stopBreakTimerLocked() {
+	if m.breakTimer != nil {
+		m.breakTimer.Stop()
+		m.breakTimer = nil
 	}
 }
 

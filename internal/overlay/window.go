@@ -2,6 +2,7 @@ package overlay
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -101,12 +102,16 @@ func (w *Window) UpdateConfig(cfg *config.Config) {
 // createOverlayWindows creates a fullscreen overlay on each screen
 func (w *Window) createOverlayWindows() {
 	screens := appkit.Screen_Screens()
+	log.Printf("Creating overlay windows for %d display(s)", len(screens))
 
 	w.windows = make([]appkit.Window, 0, len(screens))
 	w.labels = make([]appkit.TextField, 0, len(screens))
 
 	for _, screen := range screens {
 		frame := screen.Frame()
+		log.Printf("Overlay target display=%q frame=(x=%.0f y=%.0f w=%.0f h=%.0f)",
+			screen.LocalizedName(),
+			frame.Origin.X, frame.Origin.Y, frame.Size.Width, frame.Size.Height)
 
 		// Create borderless window (styleMask = 0)
 		win := appkit.NewWindowWithContentRectStyleMaskBackingDefer(
@@ -120,6 +125,10 @@ func (w *Window) createOverlayWindows() {
 		// Configure window for overlay behavior
 		win.SetOpaque(false)
 		win.SetHasShadow(false)
+		win.SetReleasedWhenClosed(false)
+		win.SetCanHide(false)
+		win.SetHidesOnDeactivate(false)
+		win.SetIgnoresMouseEvents(false)
 
 		// Set background color with configured opacity
 		opacity := w.config.OverlayOpacity
@@ -132,16 +141,18 @@ func (w *Window) createOverlayWindows() {
 		// Set window level to float above everything
 		win.SetLevel(appkit.ScreenSaverWindowLevel)
 
-		// Allow window to appear on all spaces including fullscreen apps
+		// Allow window to appear across spaces and above fullscreen apps.
 		win.SetCollectionBehavior(
 			appkit.WindowCollectionBehaviorCanJoinAllSpaces |
-				appkit.WindowCollectionBehaviorStationary |
+				appkit.WindowCollectionBehaviorMoveToActiveSpace |
+				appkit.WindowCollectionBehaviorTransient |
 				appkit.WindowCollectionBehaviorFullScreenAuxiliary,
 		)
 
 		// Create content view with countdown label
 		contentView := w.createContentView(frame)
 		win.SetContentView(contentView)
+		win.SetFrameDisplay(frame, true)
 
 		// Show window
 		win.OrderFrontRegardless()
@@ -152,8 +163,13 @@ func (w *Window) createOverlayWindows() {
 
 // createContentView creates the view with countdown text
 func (w *Window) createContentView(frame foundation.Rect) appkit.View {
+	localFrame := foundation.Rect{
+		Origin: foundation.Point{X: 0, Y: 0},
+		Size:   frame.Size,
+	}
+
 	// Create container view
-	view := appkit.NewViewWithFrame(frame)
+	view := appkit.NewViewWithFrame(localFrame)
 
 	// Create main message label
 	messageLabel := appkit.NewLabel("👀 Schau in die Ferne!")
@@ -248,33 +264,55 @@ func (w *Window) startCountdown() {
 				}
 				w.remainingSecs--
 				remaining := w.remainingSecs
-				labels := w.labels
+				if remaining <= 0 {
+					// Complete the countdown without dispatching further label updates.
+					w.mu.Unlock()
+					w.completeCountdown()
+					return
+				}
 				w.mu.Unlock()
 
 				// Update labels on main thread
 				dispatch.MainQueue().DispatchAsync(func() {
+					w.mu.Lock()
+					if !w.isShowing {
+						w.mu.Unlock()
+						return
+					}
+					labels := append([]appkit.TextField(nil), w.labels...)
+					w.mu.Unlock()
 					for _, label := range labels {
 						label.SetStringValue(fmt.Sprintf("%d", remaining))
 					}
 				})
-
-				// Check if countdown complete
-				if remaining <= 0 {
-					w.mu.Lock()
-					if w.ticker != nil {
-						w.ticker.Stop()
-					}
-					w.mu.Unlock()
-					w.Hide()
-					if w.onComplete != nil {
-						w.onComplete()
-					}
-					return
-				}
 
 			case <-w.stopChan:
 				return
 			}
 		}
 	}()
+}
+
+// completeCountdown stops the ticker, closes the overlay, and signals completion.
+func (w *Window) completeCountdown() {
+	w.mu.Lock()
+	if !w.isShowing {
+		w.mu.Unlock()
+		return
+	}
+	w.isShowing = false
+	if w.ticker != nil {
+		w.ticker.Stop()
+		w.ticker = nil
+	}
+	w.mu.Unlock()
+
+	// Close windows on main thread
+	dispatch.MainQueue().DispatchAsync(func() {
+		w.closeOverlayWindows()
+	})
+
+	if w.onComplete != nil {
+		w.onComplete()
+	}
 }

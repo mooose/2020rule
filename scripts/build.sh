@@ -5,41 +5,40 @@ APP_NAME="2020Rule"
 BUILD_DIR="build"
 VERSION=${VERSION:-"1.0.0"}
 
-# Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-echo -e "${BLUE}Building ${APP_NAME}...${NC}"
+echo -e "${BLUE}Building ${APP_NAME} (Swift)...${NC}"
 
-# Create build directory
 mkdir -p "${BUILD_DIR}"
 
-# Build Go binary
-echo -e "${BLUE}Compiling Go binary...${NC}"
-go build -o "${BUILD_DIR}/${APP_NAME}" \
-    -ldflags="-X main.version=${VERSION}" \
-    cmd/2020rule/main.go
+echo -e "${BLUE}Compiling Swift binary...${NC}"
+swift build -c release --product "${APP_NAME}"
+
+BIN_PATH=".build/release/${APP_NAME}"
+if [ ! -f "${BIN_PATH}" ]; then
+  echo "Binary not found at ${BIN_PATH}"
+  exit 1
+fi
+
+cp "${BIN_PATH}" "${BUILD_DIR}/${APP_NAME}"
 
 echo -e "${GREEN}✓ Binary compiled${NC}"
 
-# Create app bundle structure
 echo -e "${BLUE}Creating app bundle...${NC}"
 APP_DIR="${BUILD_DIR}/${APP_NAME}.app"
 rm -rf "${APP_DIR}"
 mkdir -p "${APP_DIR}/Contents/MacOS"
 mkdir -p "${APP_DIR}/Contents/Resources"
 
-# Copy binary
 cp "${BUILD_DIR}/${APP_NAME}" "${APP_DIR}/Contents/MacOS/"
 
-# Copy resources (icons)
 if [ -d "resources/icon.iconset" ]; then
-    cp resources/icon.iconset/*.png "${APP_DIR}/Contents/Resources/" 2>/dev/null || true
+    iconutil -c icns resources/icon.iconset -o "${APP_DIR}/Contents/Resources/AppIcon.icns"
 fi
 
-# Create Info.plist
-cat > "${APP_DIR}/Contents/Info.plist" << EOF
+cat > "${APP_DIR}/Contents/Info.plist" << EOF2
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -52,6 +51,9 @@ cat > "${APP_DIR}/Contents/Info.plist" << EOF
 
     <key>CFBundleName</key>
     <string>20-20-20 Rule</string>
+
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
 
     <key>CFBundleVersion</key>
     <string>${VERSION}</string>
@@ -66,14 +68,11 @@ cat > "${APP_DIR}/Contents/Info.plist" << EOF
     <true/>
 
     <key>LSMinimumSystemVersion</key>
-    <string>10.15</string>
+    <string>12.0</string>
 </dict>
 </plist>
-EOF
+EOF2
 
-echo -e "${GREEN}✓ Info.plist created${NC}"
-
-# Make binary executable
 chmod +x "${APP_DIR}/Contents/MacOS/${APP_NAME}"
 
 echo -e "${GREEN}✓ Build complete: ${APP_DIR}${NC}"

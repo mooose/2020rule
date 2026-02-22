@@ -201,6 +201,7 @@ final class AppCoordinator {
         applyConfigChanges(context: "applying settings form") { cfg in
             cfg.workDurationMinutes = values.workDurationMinutes
             cfg.breakDurationSeconds = values.breakDurationSeconds
+            cfg.breathStartDelaySeconds = values.breathStartDelaySeconds
             cfg.overlayOpacity = values.overlayOpacity
             cfg.overlayScreenMode = values.overlayScreenMode
             cfg.showBoxBreathing = values.showBoxBreathing

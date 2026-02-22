@@ -5,6 +5,7 @@ enum ConfigError: LocalizedError {
     case invalidBreakDuration
     case invalidIdleThreshold
     case invalidOpacity
+    case invalidBreathStartDelay
 
     var errorDescription: String? {
         switch self {
@@ -16,6 +17,8 @@ enum ConfigError: LocalizedError {
             return "idle threshold must be at least 1 minute"
         case .invalidOpacity:
             return "overlay opacity must be between 0.0 and 1.0"
+        case .invalidBreathStartDelay:
+            return "breath start delay must be 0 seconds or greater"
         }
     }
 }
@@ -40,6 +43,7 @@ struct AppConfig: Codable {
     var overlayForegroundHex: String
     var showHydrationReminder: Bool
     var overlayScreenMode: OverlayScreenMode
+    var breathStartDelaySeconds: Double
 
     init(
         workDurationMinutes: Double,
@@ -54,7 +58,8 @@ struct AppConfig: Codable {
         overlayBackgroundHex: String,
         overlayForegroundHex: String,
         showHydrationReminder: Bool,
-        overlayScreenMode: OverlayScreenMode
+        overlayScreenMode: OverlayScreenMode,
+        breathStartDelaySeconds: Double
     ) {
         self.workDurationMinutes = workDurationMinutes
         self.breakDurationSeconds = breakDurationSeconds
@@ -69,6 +74,7 @@ struct AppConfig: Codable {
         self.overlayForegroundHex = overlayForegroundHex
         self.showHydrationReminder = showHydrationReminder
         self.overlayScreenMode = overlayScreenMode
+        self.breathStartDelaySeconds = breathStartDelaySeconds
     }
 
     static func defaults() -> AppConfig {
@@ -85,7 +91,8 @@ struct AppConfig: Codable {
             overlayBackgroundHex: "#000000",
             overlayForegroundHex: "#FFFFFF",
             showHydrationReminder: false,
-            overlayScreenMode: .both
+            overlayScreenMode: .both,
+            breathStartDelaySeconds: 0
         )
     }
 
@@ -101,6 +108,9 @@ struct AppConfig: Codable {
         }
         if overlayOpacity < 0 || overlayOpacity > 1 {
             throw ConfigError.invalidOpacity
+        }
+        if breathStartDelaySeconds < 0 {
+            throw ConfigError.invalidBreathStartDelay
         }
         return self
     }
@@ -123,6 +133,7 @@ struct AppConfig: Codable {
         case overlayForegroundHex = "overlay_foreground_hex"
         case showHydrationReminder = "show_hydration_reminder"
         case overlayScreenMode = "overlay_screen_mode"
+        case breathStartDelaySeconds = "breath_start_delay_seconds"
     }
 
     init(from decoder: Decoder) throws {
@@ -143,6 +154,7 @@ struct AppConfig: Codable {
         showHydrationReminder = try container.decodeIfPresent(Bool.self, forKey: .showHydrationReminder) ?? defaults.showHydrationReminder
         let screenModeRaw = try container.decodeIfPresent(String.self, forKey: .overlayScreenMode)
         overlayScreenMode = screenModeRaw.flatMap(OverlayScreenMode.init(rawValue:)) ?? defaults.overlayScreenMode
+        breathStartDelaySeconds = try container.decodeIfPresent(Double.self, forKey: .breathStartDelaySeconds) ?? defaults.breathStartDelaySeconds
     }
 
     func encode(to encoder: Encoder) throws {
@@ -160,5 +172,6 @@ struct AppConfig: Codable {
         try container.encode(overlayForegroundHex, forKey: .overlayForegroundHex)
         try container.encode(showHydrationReminder, forKey: .showHydrationReminder)
         try container.encode(overlayScreenMode.rawValue, forKey: .overlayScreenMode)
+        try container.encode(breathStartDelaySeconds, forKey: .breathStartDelaySeconds)
     }
 }

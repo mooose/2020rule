@@ -5,6 +5,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     struct SettingsValues {
         let workDurationMinutes: Double
         let breakDurationSeconds: Double
+        let breathStartDelaySeconds: Double
         let overlayOpacity: Double
         let overlayScreenMode: OverlayScreenMode
         let autoStartOnLogin: Bool
@@ -237,6 +238,7 @@ private final class SettingsDialogController: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let workField = NSTextField()
     private let breakField = NSTextField()
+    private let breathDelayField = NSTextField()
     private let opacitySlider = NSSlider(value: 95, minValue: 0, maxValue: 100, target: nil, action: nil)
     private let opacityValueLabel = NSTextField(labelWithString: "95%")
     private let overlayScreenModePopup = NSPopUpButton()
@@ -252,7 +254,7 @@ private final class SettingsDialogController: NSObject, NSWindowDelegate {
         self.launchAtLoginSupported = launchAtLoginSupported
 
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 540),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -296,6 +298,11 @@ private final class SettingsDialogController: NSObject, NSWindowDelegate {
             return
         }
 
+        guard let breathDelaySeconds = parseNumber(breathDelayField.stringValue), breathDelaySeconds >= 0 else {
+            showValidation("Breath-Startverzögerung muss 0 Sekunden oder mehr sein.")
+            return
+        }
+
         let opacityPercent = opacitySlider.doubleValue
         guard opacityPercent >= 0, opacityPercent <= 100 else {
             showValidation("Overlay-Deckkraft muss zwischen 0 und 100 liegen.")
@@ -305,6 +312,7 @@ private final class SettingsDialogController: NSObject, NSWindowDelegate {
         result = MenuBarController.SettingsValues(
             workDurationMinutes: workMinutes,
             breakDurationSeconds: breakSeconds,
+            breathStartDelaySeconds: breathDelaySeconds,
             overlayOpacity: opacityPercent / 100.0,
             overlayScreenMode: selectedOverlayScreenMode(),
             autoStartOnLogin: autoStartCheck.state == .on,
@@ -346,6 +354,7 @@ private final class SettingsDialogController: NSObject, NSWindowDelegate {
 
         workField.stringValue = String(format: "%.0f", config.workDurationMinutes)
         breakField.stringValue = String(format: "%.0f", config.breakDurationSeconds)
+        breathDelayField.stringValue = String(format: "%.0f", config.breathStartDelaySeconds)
 
         opacitySlider.doubleValue = config.overlayOpacity * 100
         opacitySlider.target = self
@@ -374,6 +383,7 @@ private final class SettingsDialogController: NSObject, NSWindowDelegate {
         let grid = NSGridView(views: [
             [labelCell("Arbeitsintervall"), fieldCell(workField, suffix: "Min")],
             [labelCell("Pausendauer"), fieldCell(breakField, suffix: "Sek")],
+            [labelCell("Breath-Startverzögerung"), fieldCell(breathDelayField, suffix: "Sek")],
             [labelCell("Overlay-Deckkraft"), sliderCell(opacitySlider, trailingLabel: opacityValueLabel)],
             [labelCell("Overlay-Monitor"), popupCell(overlayScreenModePopup)],
             [labelCell("Sperrbildschirm-Farbe"), colorCell(backgroundColorWell)],
@@ -427,6 +437,7 @@ private final class SettingsDialogController: NSObject, NSWindowDelegate {
 
             workField.widthAnchor.constraint(equalToConstant: 90),
             breakField.widthAnchor.constraint(equalToConstant: 90),
+            breathDelayField.widthAnchor.constraint(equalToConstant: 90),
             opacityValueLabel.widthAnchor.constraint(equalToConstant: 56),
             overlayScreenModePopup.widthAnchor.constraint(equalToConstant: 220),
 

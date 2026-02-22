@@ -88,6 +88,12 @@ private final class BreathBallView: NSView {
         setScaleImmediate(targetScale)
     }
 
+    func showDelay(secondsRemaining: Int) {
+        countLabel.stringValue = "\(max(secondsRemaining, 0))"
+        phaseLabel.stringValue = "Start in"
+        setScaleImmediate(0.72)
+    }
+
     private func setScaleImmediate(_ scale: CGFloat) {
         let diameter = baseDiameter * scale
         let circleFrame = NSRect(
@@ -153,7 +159,7 @@ private final class WaterDropsView: NSView {
 
         guard bounds.width > 10, bounds.height > 10 else { return }
 
-        let count = 28
+        let count = max(28, Int((bounds.width * bounds.height) / 55000))
         for idx in 0..<count {
             let size = CGFloat.random(in: 10...24)
             let x = CGFloat.random(in: 0...(max(bounds.width - size, 1)))
@@ -379,6 +385,13 @@ final class OverlayWindowController {
             let contentBounds = NSRect(origin: .zero, size: frame.size)
             let content = NSView(frame: contentBounds)
 
+            if config.showHydrationReminder {
+                let drops = WaterDropsView(frame: contentBounds, dropColor: foregroundColor)
+                drops.autoresizingMask = [.width, .height]
+                content.addSubview(drops)
+                hydrationDropViews.append(drops)
+            }
+
             let messageLabel = NSTextField(labelWithString: "👀 Schau in die Ferne!")
             messageLabel.alignment = .center
             messageLabel.textColor = foregroundColor
@@ -447,17 +460,7 @@ final class OverlayWindowController {
                     width: 640,
                     height: 44
                 )
-
-                let drops = WaterDropsView(frame: NSRect(
-                    x: (contentBounds.width - 520) / 2,
-                    y: contentBounds.height * 0.04,
-                    width: 520,
-                    height: 150
-                ), dropColor: foregroundColor)
-
-                content.addSubview(drops)
                 content.addSubview(waterText)
-                hydrationDropViews.append(drops)
                 hydrationLabels.append(waterText)
             }
 
@@ -563,7 +566,25 @@ final class OverlayWindowController {
 
     private func refreshDynamicLabels() {
         if config.showBoxBreathing {
-            let state = breathingState()
+            guard let breakStartAt else {
+                for ball in breathBallViews {
+                    ball.showDelay(secondsRemaining: 0)
+                }
+                return
+            }
+
+            let elapsed = max(Date().timeIntervalSince(breakStartAt), 0)
+            let delay = max(config.breathStartDelaySeconds, 0)
+
+            if elapsed < delay {
+                let secondsUntilStart = Int(ceil(delay - elapsed))
+                for ball in breathBallViews {
+                    ball.showDelay(secondsRemaining: secondsUntilStart)
+                }
+                return
+            }
+
+            let state = breathingState(elapsedAfterDelay: elapsed - delay)
 
             for ball in breathBallViews {
                 ball.update(
@@ -582,12 +603,13 @@ final class OverlayWindowController {
         }
     }
 
-    private func breathingState() -> (phase: BreathingPhase, secondInPhase: Int, phaseProgress: Double) {
-        guard let breakStartAt else {
+    private func breathingState(elapsedAfterDelay: TimeInterval) -> (phase: BreathingPhase, secondInPhase: Int, phaseProgress: Double) {
+        let effectiveDuration = max(totalDuration - max(config.breathStartDelaySeconds, 0), 0)
+        guard effectiveDuration > 0 else {
             return (.inhale, 1, 0)
         }
-        let elapsedTime = max(Date().timeIntervalSince(breakStartAt), 0)
-        let boundedElapsed = min(elapsedTime, totalDuration)
+
+        let boundedElapsed = min(max(elapsedAfterDelay, 0), effectiveDuration)
         let cyclePosition = boundedElapsed.truncatingRemainder(dividingBy: 16)
         let phaseIndex = Int(cyclePosition / 4)
         let phaseTime = cyclePosition.truncatingRemainder(dividingBy: 4)

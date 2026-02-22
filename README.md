@@ -10,6 +10,7 @@ Eine native macOS-Menubar-Anwendung in **Swift/AppKit**, die die **20-20-20 Auge
 - Anpassbare Zeiten und Overlay-Deckkraft direkt im Menü
 - Auswahl für Overlay-Monitor: beide, nur links oder nur rechts
 - Optionales Box-Breathing während der Pause (4-4-4-4)
+- Konfigurierbare Startverzögerung für Box-Breathing
 - Pause manuell entsperren mit `Esc` 3x
 - Option: Start beim Login (macOS 13+)
 - Persistente Konfiguration in JSON
@@ -57,7 +58,8 @@ Standardwerte:
   "overlay_opacity": 0.95,
   "first_run": true,
   "show_box_breathing": false,
-  "overlay_screen_mode": "both"
+  "overlay_screen_mode": "both",
+  "breath_start_delay_seconds": 0
 }
 ```
 

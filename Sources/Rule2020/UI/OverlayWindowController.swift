@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import CoreGraphics
+import ApplicationServices
 
 private enum BreathingPhase {
     case inhale
@@ -23,6 +24,73 @@ private enum BreathingPhase {
 private final class OverlayWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+private final class FocusSnapshot {
+    private let runningApplication: NSRunningApplication?
+    private let focusedApplication: AXUIElement?
+    private let focusedWindow: AXUIElement?
+    private let focusedElement: AXUIElement?
+
+    init() {
+        runningApplication = NSWorkspace.shared.frontmostApplication
+
+        let systemWide = AXUIElementCreateSystemWide()
+
+        var appValue: CFTypeRef?
+        if AXUIElementCopyAttributeValue(systemWide, kAXFocusedApplicationAttribute as CFString, &appValue) == .success,
+           CFGetTypeID(appValue) == AXUIElementGetTypeID() {
+            focusedApplication = (appValue as! AXUIElement)
+        } else {
+            focusedApplication = nil
+        }
+
+        if let focusedApplication {
+            var windowValue: CFTypeRef?
+            if AXUIElementCopyAttributeValue(focusedApplication, kAXFocusedWindowAttribute as CFString, &windowValue) == .success,
+               CFGetTypeID(windowValue) == AXUIElementGetTypeID() {
+                focusedWindow = (windowValue as! AXUIElement)
+            } else {
+                focusedWindow = nil
+            }
+
+            var elementValue: CFTypeRef?
+            if AXUIElementCopyAttributeValue(focusedApplication, kAXFocusedUIElementAttribute as CFString, &elementValue) == .success,
+               CFGetTypeID(elementValue) == AXUIElementGetTypeID() {
+                focusedElement = (elementValue as! AXUIElement)
+            } else {
+                focusedElement = nil
+            }
+        } else {
+            focusedWindow = nil
+            focusedElement = nil
+        }
+    }
+
+    func restore() {
+        DispatchQueue.main.async {
+            self.runningApplication?.activate(options: [.activateIgnoringOtherApps])
+
+            guard let focusedApplication = self.focusedApplication else { return }
+
+            if let focusedWindow = self.focusedWindow {
+                AXUIElementSetAttributeValue(
+                    focusedApplication,
+                    kAXFocusedWindowAttribute as CFString,
+                    focusedWindow
+                )
+            }
+
+            if let focusedElement = self.focusedElement {
+                AXUIElementSetAttributeValue(
+                    focusedApplication,
+                    kAXFocusedUIElementAttribute as CFString,
+                    focusedElement
+                )
+                AXUIElementPerformAction(focusedElement, kAXRaiseAction as CFString)
+            }
+        }
+    }
 }
 
 private final class BreathBallView: NSView {
@@ -271,6 +339,7 @@ final class OverlayWindowController {
     private var localKeyMonitor: Any?
     private var globalKeyMonitor: Any?
     private var recentEscapePresses: [Date] = []
+    private var focusSnapshot: FocusSnapshot?
 
     init(config: AppConfig) {
         self.config = config
@@ -296,6 +365,7 @@ final class OverlayWindowController {
     func show(duration: TimeInterval) {
         DispatchQueue.main.async {
             guard !self.isShowing else { return }
+            self.focusSnapshot = FocusSnapshot()
             self.isShowing = true
             self.remainingSeconds = max(Int(duration.rounded()), 1)
             self.totalDuration = duration
@@ -681,6 +751,8 @@ final class OverlayWindowController {
         guard isShowing else { return }
 
         isShowing = false
+        let focusSnapshot = self.focusSnapshot
+        self.focusSnapshot = nil
         recentEscapePresses.removeAll()
         breakStartAt = nil
         breakEndAt = nil
@@ -700,6 +772,8 @@ final class OverlayWindowController {
         breathBallViews.removeAll()
         hydrationLabels.removeAll()
         hydrationDropViews.removeAll()
+
+        focusSnapshot?.restore()
     }
 
     private func overlayBackgroundColor() -> NSColor {
